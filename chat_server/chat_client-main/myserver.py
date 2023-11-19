@@ -51,6 +51,10 @@ class ChatServer:
 
     def client_handler(self, client_socket):
         try:
+            # Create a message processing thread for the client
+            message_thread = threading.Thread(target=self.message_processor, args=(client_socket,))
+            message_thread.start()
+
             while True:
                 readable, _, _ = select.select([client_socket], [], [], 1)
                 if readable:
@@ -75,6 +79,16 @@ class ChatServer:
             self.remove_client(client_socket)
             client_socket.close()
 
+    def message_processor(self, client_socket):
+        while True:
+            try:
+                message = self.message_queue.get()
+                if message:
+                    # Process the message, customize this part according to your message format
+                    print(f"Processing message for {client_socket.getpeername()}: {message.decode('utf-8')}")
+            except queue.Empty:
+                pass
+
     def process_message(self, data):
         # Process incoming messages and enqueue for broadcasting
         # Customize this part according to your message format
@@ -96,6 +110,6 @@ class ChatServer:
 
 if __name__ == "__main__":
     host = "127.0.0.1"
-    port = 9112
+    port = 12345
     server = ChatServer(host, port, num_workers=2)
     server.start()
