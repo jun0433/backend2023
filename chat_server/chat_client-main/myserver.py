@@ -119,28 +119,28 @@ class Room:
     def remove_member(self, member):
         self.members.remove(member)
 
-# ...
+
 
 def process_client_message(client_sock, message, rooms, client_info, room_of_client):
     # ...
 
-    if msg_type == 'name':
+    if msg_type == '/name':
         handle_name_command(client_sock, message, client_info, rooms, room_of_client)
-    elif msg_type == 'rooms':
+    elif msg_type == '/rooms':
         handle_rooms_command(client_sock, rooms)
-    elif msg_type == 'create':
+    elif msg_type == '/create':
         handle_create_command(client_sock, message, rooms, client_info, room_of_client)
-    elif msg_type == 'join':
+    elif msg_type == '/join':
         handle_join_command(client_sock, message, rooms, client_info, room_of_client)
-    elif msg_type == 'leave':
+    elif msg_type == '/leave':
         handle_leave_command(client_sock, rooms, client_info, room_of_client)
-    elif msg_type == 'shutdown':
+    elif msg_type == '/shutdown':
         handle_shutdown_command(client_sock, server_sock, client_info, rooms, room_of_client)
     else:
         # Assume it's a chat message
         handle_chat_message(client_sock, message, client_info, room_of_client)
 
-# ... (이전 코드 부분)
+
 
 def handle_name_command(client_sock, message, client_info, rooms, room_of_client):
     new_name = message['data']
@@ -156,6 +156,25 @@ def handle_name_command(client_sock, message, client_info, rooms, room_of_client
 
     else:
         send_system_message(client_sock, f"[시스템 메시지] 이름이 {old_name}에서 {new_name}으로 변경되었습니다.")
+
+def handle_client(client_sock):
+    while True:
+        try:
+            data = client_sock.recv(1024)
+            if not data:
+                break
+
+            message = json.loads(data.decode('utf-8'))
+            process_client_message(client_sock, message, rooms, client_info, room_of_client)
+
+        except Exception as e:
+            print(f"클라이언트 처리 오류: {e}")
+            break
+
+    # 클라이언트가 연결을 끊으면 여기에 추가 정리 로직을 추가할 수 있습니다.
+    client_sock.close()
+    del clients[client_sock]
+    print(f"클라이언트 연결 종료: {addr}")
 
 
 if __name__ == "__main__":
