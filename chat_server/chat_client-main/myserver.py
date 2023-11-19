@@ -110,6 +110,6 @@ class ChatServer:
 
 if __name__ == "__main__":
     host = "127.0.0.1"
-    port = 12345
+    port = 9112
     server = ChatServer(host, port, num_workers=2)
     server.start()
