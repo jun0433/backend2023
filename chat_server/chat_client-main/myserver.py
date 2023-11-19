@@ -108,8 +108,76 @@ class ChatServer:
                 del self.clients[user_id]
                 break
 
+class Room:
+    def __init__(self, title):
+        self.title = title
+        self.members = []
+
+    def add_member(self, member):
+        self.members.append(member)
+
+    def remove_member(self, member):
+        self.members.remove(member)
+
+# ...
+
+def process_client_message(client_sock, message, rooms, client_info, room_of_client):
+    # ...
+
+    if msg_type == 'name':
+        handle_name_command(client_sock, message, client_info, rooms, room_of_client)
+    elif msg_type == 'rooms':
+        handle_rooms_command(client_sock, rooms)
+    elif msg_type == 'create':
+        handle_create_command(client_sock, message, rooms, client_info, room_of_client)
+    elif msg_type == 'join':
+        handle_join_command(client_sock, message, rooms, client_info, room_of_client)
+    elif msg_type == 'leave':
+        handle_leave_command(client_sock, rooms, client_info, room_of_client)
+    elif msg_type == 'shutdown':
+        handle_shutdown_command(client_sock, server_sock, client_info, rooms, room_of_client)
+    else:
+        # Assume it's a chat message
+        handle_chat_message(client_sock, message, client_info, room_of_client)
+
+# ... (이전 코드 부분)
+
+def handle_name_command(client_sock, message, client_info, rooms, room_of_client):
+    new_name = message['data']
+    old_name = client_info[client_sock]['name']
+    client_info[client_sock]['name'] = new_name
+
+    if room_of_client[client_sock]:
+        room = rooms[room_of_client[client_sock]]
+        sys_msg = f"[시스템 메시지] 이름이 {old_name}에서 {new_name}으로 변경되었습니다."
+
+        for member_sock in room.members:
+            send_system_message(member_sock, sys_msg)
+
+    else:
+        send_system_message(client_sock, f"[시스템 메시지] 이름이 {old_name}에서 {new_name}으로 변경되었습니다.")
+
+
 if __name__ == "__main__":
-    host = "127.0.0.1"
+    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    host = '127.0.0.1'
     port = 9112
-    server = ChatServer(host, port, num_workers=2)
-    server.start()
+
+    server_sock.bind((host, port))
+    server_sock.listen(5)
+
+    print(f"채팅 서버가 {host}:{port}에서 실행 중입니다.")
+
+    clients = {}
+    client_info = {}
+    rooms = {}
+    room_of_client = {}
+
+    while True:
+        client_sock, addr = server_sock.accept()
+        print(f"새로운 연결: {addr}")
+        client_info[client_sock] = {'name': f'Guest{len(clients) + 1}'}
+        clients[client_sock] = threading.Thread(target=handle_client, args=(client_sock,))
+        clients[client_sock].start()
