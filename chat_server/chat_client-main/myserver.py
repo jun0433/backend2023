@@ -2,6 +2,7 @@ import socket
 import threading
 import queue
 import select
+import json
 
 class ChatServer:
     def __init__(self, host, port, num_workers=2):
