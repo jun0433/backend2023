@@ -167,9 +167,12 @@ def handle_client(client_sock):
             if not data:
                 break
 
-            message = json.loads(data.decode('utf-8'))
+            message = json.loads(data.decode('utf-8'))  # JSON 디코딩 부분을 추가합니다.
             process_client_message(client_sock, message, rooms, client_info, room_of_client)
 
+        except json.JSONDecodeError as e:
+            print(f"클라이언트 처리 오류: {e}")
+            break
         except Exception as e:
             print(f"클라이언트 처리 오류: {e}")
             break
