@@ -120,7 +120,9 @@ class Room:
     def remove_member(self, member):
         self.members.remove(member)
 
-
+def send_message(sock, message):
+    json_message = json.dumps(message)
+    sock.send(json_message.encode('utf-8'))
 
 def process_client_message(client_sock, message, rooms, client_info, room_of_client):
     # ...
