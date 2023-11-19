@@ -193,9 +193,19 @@ class ChatServer:
             client.room = None
 
     def handle_cs_shutdown(self, client, message):
-        # 채팅 서버 종료 처리
-        # (추가 작업 필요)
-        pass
+        print("Shutting down the server.")
+        
+        # 예시: 서버 종료 시에는 모든 클라이언트에게 종료 메시지 전송
+        shutdown_message = create_json_response('SCSystemMessage', '서버가 종료되었습니다.')
+        for member in self.clients.values():
+            try:
+                member.sendall(shutdown_message.encode('utf-8'))
+            except socket.error:
+                # Handle socket errors if any
+                pass
+
+        self.server_socket.close()
+        sys.exit()
 
 
 
