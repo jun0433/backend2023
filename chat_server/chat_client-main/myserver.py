@@ -127,17 +127,17 @@ def send_message(sock, message):
 def process_client_message(client_sock, message, rooms, client_info, room_of_client):
     # ...
 
-    if msg_type == '/name':
+    if msg_type == 'name':
         handle_name_command(client_sock, message, client_info, rooms, room_of_client)
-    elif msg_type == '/rooms':
+    elif msg_type == 'rooms':
         handle_rooms_command(client_sock, rooms)
-    elif msg_type == '/create':
+    elif msg_type == 'create':
         handle_create_command(client_sock, message, rooms, client_info, room_of_client)
-    elif msg_type == '/join':
+    elif msg_type == 'join':
         handle_join_command(client_sock, message, rooms, client_info, room_of_client)
-    elif msg_type == '/leave':
+    elif msg_type == 'leave':
         handle_leave_command(client_sock, rooms, client_info, room_of_client)
-    elif msg_type == '/shutdown':
+    elif msg_type == 'shutdown':
         handle_shutdown_command(client_sock, server_sock, client_info, rooms, room_of_client)
     else:
         # Assume it's a chat message
