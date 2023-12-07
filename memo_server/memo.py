@@ -3,11 +3,23 @@ import random
 import requests
 import json
 import urllib
+import mysql.connector
 
-from flask import abort, Flask, make_response, render_template, Response, redirect, request
+from flask import abort, Flask, make_response, render_template, Response, redirect, request, jsonify
 
 app = Flask(__name__)
 
+# MySQL 연결 정보
+db_config = {
+    'host': '127.0.0.1',
+    'user': '1111',
+    'password': '1111',
+    'database': '1111',
+}
+
+# MySQL 연결
+db_connection = mysql.connector.connect(**db_config)
+cursor = db_connection.cursor()
 
 naver_client_id = 'kJUs5y8A5tPUZETNrEgO'
 naver_client_secret = 'uYW8foMK4L'
@@ -27,25 +39,17 @@ def home():
     # (참고: 아래 onOAuthAuthorizationCodeRedirected() 마지막 부분 response.set_cookie('userId', user_id) 참고)
     userId = request.cookies.get('userId', default=None)
     name = None
-
     ####################################################
     # TODO: 아래 부분을 채워 넣으시오.
     #       userId 로부터 DB 에서 사용자 이름을 얻어오는 코드를 여기에 작성해야 함
     if userId:
-        try:
-            user_data_json = redis_client.get(userId)
-            if user_data_json:
-                user_data = json.loads(user_data_json)
-                name = user_data.get('name')
-            else:
-                print("No user data found for userId:", userId)
-        except Exception as e:
-            print("Error while processing user data:", e)
-    else:
-        print("userId is None.")
+        # userId로부터 DB에서 사용자 이름을 얻어오는 쿼리 실행
+        query = "SELECT user_name FROM user_table WHERE user_id = %s"
+        cursor.execute(query, (userId,))
+        result = cursor.fetchone()
 
-
-
+        if result:
+            name = result[0]
     ####################################################
 
 
@@ -87,38 +91,44 @@ def onOAuthAuthorizationCodeRedirected():
     state = request.args.get('state')
 
 
+
     # 2. authorization code 로부터 access token 을 얻어내는 네이버 API 를 호출한다.
-    naver_token_url = 'https://nid.naver.com/oauth2.0/token'
-    naver_token_params = {'grant_type': 'authorization_code',
+    token_url = 'https://nid.naver.com/oauth2.0/token'
+    token_params = {
         'client_id': naver_client_id,
         'client_secret': naver_client_secret,
+        'grant_type': 'authorization_code',
         'code': authorization_code,
         'state': state,
-        'redirect_uri': naver_redirect_uri
+        'redirectURI': naver_redirect_uri,
     }
-    token_response = requests.post(naver_token_url, data=naver_token_params)
-    token_data = token_response.json()
+    response = requests.post(token_url, params=token_params)
+    token_json = response.json()
+    access_token = token_json['access_token']
 
 
     # 3. 얻어낸 access token 을 이용해서 프로필 정보를 반환하는 API 를 호출하고,
     #    유저의 고유 식별 번호를 얻어낸다.
-    naver_profile_url = 'https://openapi.naver.com/v1/nid/me'
-    headers = {
-        'Authorization': f'Bearer {token_data["access_token"]}'
-    }
-    profile_response = requests.get(naver_profile_url, headers=headers)
-    profile_data = profile_response.json()
+    user_info_url = 'https://openapi.naver.com/v1/nid/me'
+    headers = {'Authorization': f'Bearer {access_token}'}
+    user_info_response = requests.get(user_info_url, headers=headers)
+    user_info_json = user_info_response.json()
 
-    user_id = profile_data.get('response', {}).get('id')
-    user_name = profile_data.get('response', {}).get('name')
+    user_id = user_info_json.get('response', {}).get('id', None)
+    user_name = user_info_json.get('response', {}).get('name', None)
 
     # 4. 얻어낸 user id 와 name 을 DB 에 저장한다.
     if user_id and user_name:
-        user_data = {
-            'id': user_id,
-            'name': user_name
-        }
-        redis_client.set(user_id, json.dumps(user_data))
+        # 여기에 DB에 저장하는 코드 추가
+        insert_query = "INSERT INTO user_table (user_id, user_name) VALUES (%s, %s)"
+        insert_data = (user_id, user_name)
+        
+        try:
+            cursor.execute(insert_query, insert_data)
+            db_connection.commit()
+        except mysql.connector.Error as err:
+            print(f"Error: {err}")
+            db_connection.rollback()
 
 
     # 5. 첫 페이지로 redirect 하는데 로그인 쿠키를 설정하고 보내준다.
@@ -135,14 +145,21 @@ def get_memos():
         return redirect('/')
 
     # TODO: DB 에서 해당 userId 의 메모들을 읽어오도록 아래를 수정한다.
-    user_memos_key = f'user:{userId}:memos'  # 예시: user:1234:memos
+    result = []
 
-    # 여기서는 Redis를 사용한다고 가정
-    memos_json = redis_client.get(user_memos_key)
-    result = json.loads(memos_json) if memos_json else []
+    # memos 테이블에 user_id 컬럼이 있다고 가정하고 해당 사용자의 메모를 가져오는 쿼리를 실행
+    try:
+        query = "SELECT text FROM memos WHERE user_id = %s"
+        cursor.execute(query, (userId,))
+        memos = cursor.fetchall()  # 모든 메모를 가져옴
+
+        for memo in memos:
+            result.append({'text': memo[0]})
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
 
     # memos라는 키 값으로 메모 목록 보내주기
-    return {'memos': result}
+    return jsonify({'memos': result})
 
 
 @app.route('/memo', methods=['POST'])
@@ -157,29 +174,41 @@ def post_new_memo():
         abort(HTTPStatus.BAD_REQUEST)
 
     # TODO: 클라이언트로부터 받은 JSON 에서 메모 내용을 추출한 후 DB에 userId 의 메모로 추가한다.
+    memo_text = request.json.get('text')
+    if not memo_text:
+        return jsonify({'error': 'Memo content is required'}), HTTPStatus.BAD_REQUEST
+
     try:
-        memo_content = request.json.get('content')
-        if not memo_content:
-            abort(HTTPStatus.BAD_REQUEST)
+        # 커서 열기
+        cursor = db_connection.cursor()
 
-        user_memos_key = f'user:{userId}:memos'  # 예시: user:1234:memos
+        # 메모 내용 가져오기
+        # memo_text를 가져오는 부분을 여기로 이동
+        # (만약 memo_text가 비어 있다면 여기서 에러를 반환하고 함수를 빠져나갈 것이므로 이후의 코드가 실행되지 않음)
+        # 그렇지 않은 경우에만 메모 추가 쿼리 실행
+        insert_query = "INSERT INTO memos (user_id, text) VALUES (%s, %s)"
+        insert_data = (userId, memo_text)
+        cursor.execute(insert_query, insert_data)
 
-        # 여기서는 Redis를 사용한다고 가정
-        memos_json = redis_client.get(user_memos_key)
-        memos = json.loads(memos_json) if memos_json else []
+        # 변경 내용을 커밋
+        db_connection.commit()
 
-        # 새로운 메모 추가
-        new_memo = {'content': memo_content}
-        memos.append(new_memo)
+        # 메모 목록 갱신
+        query = "SELECT text FROM memos WHERE user_id = %s"
+        cursor.execute(query, (userId,))
+        result = [row[0] for row in cursor.fetchall()]  # 결과에서 memo_text만 추출
 
-        # 메모 목록을 다시 저장
-        redis_client.set(user_memos_key, json.dumps(memos))
-    except Exception as e:
-        print("Error while posting new memo:", e)
-        abort(HTTPStatus.INTERNAL_SERVER_ERROR)
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        # 오류 발생 시 롤백
+        db_connection.rollback()
+        return jsonify({'error': 'Internal server error'}), HTTPStatus.INTERNAL_SERVER_ERROR
 
-    #
-    return '', HTTPStatus.OK
+    finally:
+        # 커서 닫기
+        cursor.close()
+
+    return jsonify({'message': '메모가 성공적으로 추가되었습니다.', 'memos': result}), HTTPStatus.OK
 
 
 if __name__ == '__main__':
